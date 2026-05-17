@@ -1,0 +1,442 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// المستخدمون - الموظفون وأصحاب المحلات والمشرفون
+model User {
+  id              String        @id @default(cuid())
+  name            String
+  email           String        @unique
+  password        String
+  phone           String?
+  avatar          String?
+  role            UserRole      @default(SHOP_STAFF)
+  isActive        Boolean       @default(true)
+  emailVerified   Boolean       @default(false)
+  lastLoginAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  accountStatus   AccountStatus @default(PENDING)
+  approvedAt      DateTime?
+  approvedBy      String?
+  isApproved      Boolean       @default(false)
+  auditLogs       AuditLog[]
+  sessions        Session[]
+  shopMemberships ShopMember[]
+
+  @@index([email])
+  @@map("users")
+}
+
+/// جلسات المستخدمين
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// المحلات والأعمال التجارية
+model Shop {
+  id           String           @id @default(cuid())
+  name         String
+  nameAr       String?
+  slug         String           @unique
+  category     ShopCategory     @default(OTHER)
+  description  String?          @db.Text
+  logo         String?
+  coverImage   String?
+  phone        String?
+  email        String?
+  address      String?
+  city         String?
+  country      String           @default("SA")
+  timezone     String           @default("Asia/Riyadh")
+  currency     String           @default("SAR")
+  isActive     Boolean          @default(true)
+  isVerified   Boolean          @default(false)
+  settings     Json?
+  
+  // Working Hours & Registration Control
+  openTime              String?
+  closeTime             String?
+  registrationStartTime String?
+  registrationEndTime   String?
+  dailyQueueLimit       Int?
+  autoResetEnabled      Boolean    @default(true)
+  currentStatus         ShopStatus @default(CLOSED)
+  workingDays           String?    @default("1,2,3,4,5,6,0")
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  auditLogs    AuditLog[]
+  branches     Branch[]
+  analytics    DailyAnalytics[]
+  promotions   Promotion[]
+  qrCodes      QrCode[]
+  queues       Queue[]
+  members      ShopMember[]
+  subscription Subscription?
+  tickets      Ticket[]
+  breakTimes   BreakTime[]
+  queueDays    QueueDay[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("shops")
+}
+
+/// أوقات الاستراحة
+model BreakTime {
+  id        String   @id @default(cuid())
+  shopId    String
+  title     String
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@map("break_times")
+}
+
+/// سجل أيام الطوابير
+model QueueDay {
+  id               String   @id @default(cuid())
+  shopId           String
+  date             DateTime @db.Date
+  totalTickets     Int      @default(0)
+  completedTickets Int      @default(0)
+  canceledTickets  Int      @default(0)
+  registrationOpen Boolean  @default(true)
+  status           String?
+  createdAt        DateTime @default(now())
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, date])
+  @@index([shopId, date])
+  @@map("queue_days")
+}
+
+/// أعضاء/موظفو المحل
+model ShopMember {
+  id          String   @id @default(cuid())
+  shopId      String
+  userId      String
+  role        UserRole @default(SHOP_STAFF)
+  permissions Json?
+  isActive    Boolean  @default(true)
+  joinedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, userId])
+  @@index([shopId])
+  @@index([userId])
+  @@map("shop_members")
+}
+
+/// الفروع
+model Branch {
+  id        String   @id @default(cuid())
+  shopId    String
+  name      String
+  nameAr    String?
+  address   String?
+  city      String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  qrCodes   QrCode[]
+  queues    Queue[]
+
+  @@index([shopId])
+  @@map("branches")
+}
+
+/// الطوابير
+model Queue {
+  id              String      @id @default(cuid())
+  shopId          String
+  branchId        String?
+  name            String
+  nameAr          String?
+  status          QueueStatus @default(CLOSED)
+  maxCapacity     Int         @default(100)
+  avgServiceTime  Int         @default(15)
+  isActive        Boolean     @default(true)
+  autoCallEnabled Boolean     @default(false)
+  notifyBefore    Int         @default(3)
+  openTime        String?
+  closeTime       String?
+  currentNumber   Int         @default(0)
+  lastResetAt     DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  qrCodes         QrCode[]
+  branch          Branch?     @relation(fields: [branchId], references: [id])
+  shop            Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  tickets         Ticket[]
+
+  @@index([shopId])
+  @@index([status])
+  @@index([branchId], map: "queues_branchId_fkey")
+  @@map("queues")
+}
+
+/// تذاكر الانتظار
+model Ticket {
+  id            String       @id @default(cuid())
+  shopId        String
+  queueId       String
+  ticketNumber  Int
+  customerName  String?
+  customerPhone String?
+  customerToken String       @unique
+  status        TicketStatus @default(WAITING)
+  position      Int          @default(0)
+  estimatedWait Int?
+  notified      Boolean      @default(false)
+  calledAt      DateTime?
+  servedAt      DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  notes         String?
+  metadata      Json?
+  ipAddress     String?
+  deviceInfo    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  queue         Queue        @relation(fields: [queueId], references: [id])
+  shop          Shop         @relation(fields: [shopId], references: [id])
+
+  @@index([queueId, status])
+  @@index([customerToken])
+  @@index([shopId])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+/// رموز QR
+model QrCode {
+  id        String   @id @default(cuid())
+  shopId    String
+  queueId   String?
+  branchId  String?
+  code      String   @unique
+  url       String
+  isActive  Boolean  @default(true)
+  scanCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  queue     Queue?   @relation(fields: [queueId], references: [id])
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([shopId])
+  @@index([branchId], map: "qr_codes_branchId_fkey")
+  @@index([queueId], map: "qr_codes_queueId_fkey")
+  @@map("qr_codes")
+}
+
+/// الاشتراكات
+model Subscription {
+  id               String             @id @default(cuid())
+  shopId           String             @unique
+  plan             SubscriptionPlan   @default(FREE)
+  status           SubscriptionStatus @default(INACTIVE)
+  startDate        DateTime           @default(now())
+  endDate          DateTime?
+  maxQueues        Int                @default(1)
+  maxStaff         Int                @default(2)
+  features         Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  planId           String?
+  activatedByAdmin Boolean            @default(false)
+  isTrial          Boolean            @default(false)
+  remainingDays    Int                @default(0)
+  planModel        Plan?              @relation(fields: [planId], references: [id])
+  shop             Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([planId], map: "subscriptions_planId_fkey")
+  @@map("subscriptions")
+}
+
+/// Subscription Plans (managed by admin)
+model Plan {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  name           String
+  description    String?
+  price          Float         @default(0)
+  currencyCode   String        @default("SAR")
+  currencySymbol String        @default("ر.س")
+  billingCycle   BillingCycle  @default(MONTHLY)
+  discountType   DiscountType  @default(NONE)
+  discountValue  Float         @default(0)
+  finalPrice     Float         @default(0)
+  trialDays      Int           @default(0)
+  features       Json?
+  isPopular      Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  sortOrder      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  subscriptions  Subscription[]
+
+  @@map("plans")
+}
+
+/// Promotions / Coupons
+model Promotion {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  shopId          String?
+  discountPercent Int
+  startAt         DateTime
+  endAt           DateTime
+  maxUses         Int?
+  uses            Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  shop            Shop?    @relation(fields: [shopId], references: [id])
+
+  @@index([shopId], map: "promotions_shopId_fkey")
+  @@map("promotions")
+}
+
+/// الإحصائيات اليومية
+model DailyAnalytics {
+  id               String   @id @default(cuid())
+  shopId           String
+  date             DateTime @db.Date
+  totalTickets     Int      @default(0)
+  completedTickets Int      @default(0)
+  cancelledTickets Int      @default(0)
+  skippedTickets   Int      @default(0)
+  avgWaitTime      Float    @default(0)
+  avgServiceTime   Float    @default(0)
+  peakHour         Int?
+  maxQueueLength   Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, date])
+  @@index([shopId, date])
+  @@map("daily_analytics")
+}
+
+/// سجلات التدقيق والأمان
+model AuditLog {
+  id        String   @id @default(cuid())
+  shopId    String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  oldValues Json?
+  newValues Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  shop      Shop?    @relation(fields: [shopId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([shopId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SHOP_OWNER
+  SHOP_STAFF
+}
+
+enum ShopCategory {
+  BARBERSHOP
+  RESTAURANT
+  CLINIC
+  CAR_WASH
+  BEAUTY_SALON
+  OTHER
+}
+
+enum QueueStatus {
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum TicketStatus {
+  WAITING
+  CALLED
+  SERVING
+  COMPLETED
+  SKIPPED
+  CANCELLED
+  NO_SHOW
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  TRIAL
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+  NONE
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum AccountStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum ShopStatus {
+  OPEN
+  CLOSED
+  BREAK
+}
