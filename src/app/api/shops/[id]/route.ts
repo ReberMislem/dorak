@@ -31,6 +31,7 @@ export const PATCH = withAuth(async (req: NextRequest, user: JwtPayload) => {
       name, nameAr, category, description, phone, email, address, city,
       openTime, closeTime, registrationStartTime, registrationEndTime,
       dailyQueueLimit, autoResetEnabled, currentStatus, workingDays,
+      settings,
     } = validation.data;
     
     // Manual handling of breakTimes since it's a nested relation
@@ -55,6 +56,7 @@ export const PATCH = withAuth(async (req: NextRequest, user: JwtPayload) => {
         autoResetEnabled,
         currentStatus,
         workingDays,
+        settings,
       }
     });
 

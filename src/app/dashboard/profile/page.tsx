@@ -8,16 +8,18 @@ import { Button } from "@/components/ui/button";
 import { User, Mail, Phone, Lock, Camera, Shield, Settings, Save, Loader2, BadgeCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { ImageUpload } from "@/components/dashboard/ImageUpload";
+import axios from "axios";
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const { t } = useLanguage();
-  const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (user) setForm({ name: user.name, email: user.email, phone: (user as any).phone || "" });
+    if (user) setForm({ name: user.name, email: user.email, phone: (user as any).phone || "", password: "" });
   }, [user]);
 
   const onChange = (k: string, v: string) => setForm((s) => ({ ...s, [k]: v }));
@@ -26,11 +28,15 @@ export default function ProfilePage() {
     setIsSaving(true);
     setStatus(t('saving') || 'جاري الحفظ...');
     try {
-      await new Promise((r) => setTimeout(r, 1000));
-      setStatus(t('saved') || 'تم الحفظ بنجاح');
-      try { await refreshUser(); } catch {}
-    } catch (e) {
-      setStatus(t('saveError') || 'حدث خطأ أثناء الحفظ');
+      const res = await axios.patch("/api/auth/profile", form);
+      if (res.data.success) {
+        setStatus(t('saved') || 'تم الحفظ بنجاح');
+        await refreshUser();
+      } else {
+        setStatus(res.data.error || t('saveError') || 'حدث خطأ أثناء الحفظ');
+      }
+    } catch (e: any) {
+      setStatus(e?.response?.data?.error || t('saveError') || 'حدث خطأ أثناء الحفظ');
     }
     setIsSaving(false);
     setTimeout(() => setStatus(''), 3000);
@@ -41,18 +47,13 @@ export default function ProfilePage() {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-8">
         <div className="flex items-center gap-6">
-          <div className="relative group">
-            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-[2.5rem] bg-gradient-to-br from-primary/20 to-indigo-500/20 flex items-center justify-center border-2 border-primary/10 overflow-hidden shadow-glow">
-              {user?.avatar ? (
-                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-              ) : (
-                <User className="w-14 h-14 sm:w-20 sm:h-20 text-primary/30" />
-              )}
-            </div>
-            <button className="absolute -bottom-2 -right-2 p-3 bg-primary text-primary-foreground rounded-2xl shadow-xl hover:scale-110 active:scale-95 transition-all border-4 border-surface">
-              <Camera className="w-5 h-5" />
-            </button>
-          </div>
+          <ImageUpload
+            currentImage={user?.avatar}
+            onUploadSuccess={() => refreshUser()}
+            onRemoveSuccess={() => refreshUser()}
+            type="avatar"
+            isAvatarDesign={true}
+          />
           
           <div className="space-y-2">
             <div className="flex items-center gap-3">

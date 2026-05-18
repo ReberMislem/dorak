@@ -89,6 +89,7 @@ export const updateShopSchema = z.object({
   autoResetEnabled: z.boolean().optional(),
   currentStatus: z.enum(["OPEN", "CLOSED", "BREAK"]).optional(),
   workingDays: z.string().optional(),
+  settings: z.any().optional(),
 });
 
 // ---- Staff Schemas ----

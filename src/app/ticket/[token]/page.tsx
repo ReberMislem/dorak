@@ -1,21 +1,17 @@
-"use client";
-// ============================================
-// دورك - صفحة متابعة التذكرة (للعميل)
-// URL: /ticket/[token]
-// ============================================
-
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Bell,
   CheckCircle2, XCircle, RefreshCw, 
-  Phone, MapPin, Ticket as TicketIcon
+  Phone, MapPin, Ticket as TicketIcon, Volume2
 } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { Ticket } from "@/types";
 import { useCallback } from "react";
+import { useSocket } from "@/hooks/useSocket";
+import { playSound } from "@/lib/soundSynthesizer";
 
 interface TicketPageProps {
   params: Promise<{ token: string }>;
@@ -27,6 +23,8 @@ export default function TicketStatusPage({ params }: TicketPageProps) {
   const [loading, setLoading] = useState(true);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const { socket } = useSocket();
+  const [hasInteracted, setHasInteracted] = useState(false);
 
   const fetchTicketStatus = useCallback(async () => {
     try {
@@ -34,10 +32,29 @@ export default function TicketStatusPage({ params }: TicketPageProps) {
       if (res.data.success) {
         const newData = res.data.data;
         
-        // Notification logic
+        // Notification & Sound logic
         if (ticket && newData.status === "CALLED" && ticket.status === "WAITING") {
+          const soundSettings = newData.shop?.settings?.notifications || {};
+          const isEnabled = soundSettings.soundEnabled ?? true;
+          const selectedChime = soundSettings.selectedSound ?? "classic-bell";
+          const customUrl = soundSettings.customSoundUrl ?? null;
+          const volume = soundSettings.volume ?? 0.8;
+          const vibrateEnabled = soundSettings.vibrate ?? true;
+
+          if (isEnabled) {
+            const finalChime = selectedChime === "custom" && customUrl ? customUrl : selectedChime;
+            playSound(finalChime, volume);
+          }
+
+          if (vibrateEnabled && typeof navigator !== "undefined" && navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+          }
+
           if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification("حان دورك الآن!", { body: `يرجى التوجه إلى ${newData.shop.nameAr || newData.shop.name}` });
+            new Notification(`حان دورك الآن! تذكرة رقم ${newData.ticketNumber}`, { 
+              body: `يرجى التوجه إلى منطقة الخدمة في ${newData.shop.nameAr || newData.shop.name}`,
+              icon: newData.shop.logo || undefined
+            });
           }
           toast("حان دورك الآن! يرجى التوجه للموظف", { icon: '🔔', duration: 10000 });
         }
@@ -51,15 +68,44 @@ export default function TicketStatusPage({ params }: TicketPageProps) {
     }
   }, [token, ticket]);
 
-  // Poll for updates every 10 seconds
+  // Real-time WebSocket listener
+  useEffect(() => {
+    if (socket && ticket?.queueId) {
+      // Join the queue room
+      socket.emit("join:queue", ticket.queueId);
+
+      const handleCalled = (data: any) => {
+        if (data && (data.id === ticket.id || data.ticketNumber === ticket.ticketNumber)) {
+          fetchTicketStatus();
+        }
+      };
+
+      const handleUpdated = () => {
+        fetchTicketStatus();
+      };
+
+      socket.on("ticket:called", handleCalled);
+      socket.on("position:updated", handleUpdated);
+      socket.on("queue:status", handleUpdated);
+
+      return () => {
+        socket.off("ticket:called", handleCalled);
+        socket.off("position:updated", handleUpdated);
+        socket.off("queue:status", handleUpdated);
+      };
+    }
+  }, [socket, ticket?.id, ticket?.queueId, fetchTicketStatus]);
+
+  // Poll for updates every 15 seconds as a robust backup
   useEffect(() => {
     const fetchStatus = async () => {
       await fetchTicketStatus();
     };
     fetchStatus();
-    const interval = setInterval(fetchTicketStatus, 10000);
+    const interval = setInterval(fetchTicketStatus, 15000);
     return () => clearInterval(interval);
   }, [token, fetchTicketStatus]);
+
 
   const handleCancel = async () => {
     if (!confirm("هل أنت متأكد من إلغاء دورك؟")) return;
@@ -186,6 +232,25 @@ export default function TicketStatusPage({ params }: TicketPageProps) {
                 </motion.div>
               ) : isWaiting ? (
                 <motion.div key="waiting" className="space-y-6">
+                  {!hasInteracted && (
+                    <div 
+                      onClick={() => {
+                        setHasInteracted(true);
+                        playSound("classic-bell", 0.05);
+                        toast.success("تم تفعيل التنبيهات الصوتية بنجاح!", { icon: "🔊" });
+                      }}
+                      className="p-4 rounded-2xl bg-amber-50 hover:bg-amber-100/80 cursor-pointer border border-amber-200 flex gap-4 items-center transition-all animate-pulse"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center shrink-0 text-white shadow-md">
+                        <Volume2 size={20} />
+                      </div>
+                      <div className="flex-1 text-right">
+                        <h4 className="text-xs font-black text-amber-900 mb-0.5">اضغط لتفعيل الصوت</h4>
+                        <p className="text-[10px] text-amber-700 leading-normal">يرجى الضغط هنا للتأكد من تشغيل نغمة الاستدعاء فوراً عند وصول دورك.</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="p-4 rounded-2xl bg-blue-50 flex gap-4 items-start border border-blue-100">
                     <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center shrink-0">
                       <Bell className="text-white" size={20} />

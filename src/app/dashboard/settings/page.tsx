@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { 
   Store, Bell, Globe,
@@ -19,6 +20,7 @@ import { useTheme } from "next-themes";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { ImageUpload } from "@/components/dashboard/ImageUpload";
 
 type BreakTimeData = {
   id?: string;
@@ -55,6 +57,7 @@ type MeResponse = {
 };
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { refreshUser } = useAuth();
   const { theme, setTheme } = useTheme();
   const { language, setLanguage, t, isRTL } = useLanguage();
@@ -214,18 +217,18 @@ export default function SettingsPage() {
               {activeTab === "general" && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-10">
                   <div className="flex flex-col sm:flex-row items-center gap-8 pb-10 border-b border-border">
-                    <div className="relative group">
-                      <div className="relative w-28 h-28 rounded-[2rem] bg-surface-2 flex items-center justify-center text-muted-foreground border-2 border-dashed border-border overflow-hidden transition-all group-hover:border-primary/50 group-hover:bg-primary/5 shadow-inner">
-                        {shopData.logo ? (
-                          <Image src={shopData.logo} alt="Logo" fill sizes="112px" className="object-cover" />
-                        ) : (
-                          <ImageIcon size={36} />
-                        )}
-                      </div>
-                      <button type="button" className="absolute -bottom-1 -right-1 p-2.5 rounded-xl bg-primary text-primary-foreground shadow-lg hover:scale-110 active:scale-95 transition-all border-4 border-surface">
-                        <ImageIcon size={18} />
-                      </button>
-                    </div>
+                    <ImageUpload
+                      currentImage={formData.logo || shopData.logo}
+                      onUploadSuccess={(url) => {
+                        setFormData({ ...formData, logo: url });
+                        toast.success("تم تحديث الشعار. اضغط حفظ في الأسفل لتأكيد التغييرات.");
+                      }}
+                      onRemoveSuccess={() => {
+                        setFormData({ ...formData, logo: null });
+                      }}
+                      type="logo"
+                      shopId={shopData.id}
+                    />
                     <div className="text-center sm:text-right">
                       <h4 className="font-bold text-foreground text-xl mb-1">{t('shopLogo')}</h4>
                       <p className="text-sm text-muted-foreground font-medium">{t('logoHint')}</p>
@@ -407,6 +410,26 @@ export default function SettingsPage() {
 
               {activeTab === "notifications" && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+                  {/* Premium Notification Chime Promotion Card */}
+                  <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-primary/10 to-indigo-500/10 border border-primary/20 space-y-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-primary/20 text-primary flex items-center justify-center shrink-0 shadow-inner">
+                        <Bell size={28} className="animate-bounce" />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-black text-foreground">نظام نغمات الإشعارات والأصوات</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">خصص نغمات الاستدعاء، واختبر الأصوات، وارفع ملفات صوت مخصصة</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/settings/notifications")}
+                      className="btn btn-primary h-12 px-8 text-xs font-black shadow-glow shrink-0 w-full sm:w-auto"
+                    >
+                      تخصيص نغمات الاستدعاء
+                    </button>
+                  </div>
+
                   <div className="grid gap-5">
                     {[
                       { id: "n1", title: t('notificationsCustomer'), desc: language === 'en' ? 'Notify customers when their turn is near.' : 'إرسال إشعار للعميل عند اقتراب دوره', checked: true },
